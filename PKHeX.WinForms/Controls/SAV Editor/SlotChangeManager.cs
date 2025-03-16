@@ -206,9 +206,10 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
 
     private bool TryMakeDragDropPKM(PictureBox pb, ReadOnlySpan<byte> data, string newfile)
     {
+        var img = pb.Image as Bitmap;
+        ArgumentNullException.ThrowIfNull(img, nameof(img));
         File.WriteAllBytes(newfile, data);
-        if (pb.Image is not Bitmap img)
-            return false;
+
         Drag.SetCursor(pb.FindForm(), new Cursor(img.GetHicon()));
         Hover.Stop();
         pb.Image = null;
@@ -245,7 +246,7 @@ public sealed class SlotChangeManager(SAVEditor se) : IDisposable
 
         if (Directory.Exists(files[0])) // folder
         {
-            SE.LoadBoxes(out string _, files[0]);
+            SE.LoadBoxes(out _, files[0]);
             Drag.Reset();
             return;
         }

@@ -26,14 +26,17 @@ public sealed class MiscVerifier : Verifier
 
             switch (pk)
             {
-                case PK5 pk5 when pk5.PokeStarFame != 0 && pk5.IsEgg:
+                case SK2 or CK3 or XK3 or BK4 or RK4 or PA8: // Side Game: No Eggs
+                    data.AddLine(GetInvalid(LTransferEggVersion, Egg));
+                    break;
+                case PK5 pk5 when pk5.PokeStarFame != 0:
                     data.AddLine(GetInvalid(LEggShinyPokeStar, Egg));
                     break;
-                case PK4 pk4 when pk4.ShinyLeaf != 0:
-                    data.AddLine(GetInvalid(LEggShinyLeaf, Egg));
-                    break;
-                case PK4 pk4 when pk4.PokeathlonStat != 0:
-                    data.AddLine(GetInvalid(LEggPokeathlon, Egg));
+                case PK4 pk4:
+                    if (pk4.ShinyLeaf != 0)
+                        data.AddLine(GetInvalid(LEggShinyLeaf, Egg));
+                    if (pk4.PokeathlonStat != 0)
+                        data.AddLine(GetInvalid(LEggPokeathlon, Egg));
                     break;
                 case PK3 when pk.Language != 1:  // All Eggs are Japanese and flagged specially for localized string
                     data.AddLine(GetInvalid(string.Format(LOTLanguage, LanguageID.Japanese, (LanguageID)pk.Language), Egg));
@@ -84,7 +87,7 @@ public sealed class MiscVerifier : Verifier
                     data.AddLine(GetInvalid(LDateOutsideDistributionWindow));
             }
 
-            var result = serverGift.IsValidDate(date);
+            var result = serverGift.IsWithinDistributionWindow(date);
             if (result == EncounterServerDateCheck.Invalid)
                 data.AddLine(GetInvalid(LDateOutsideDistributionWindow));
         }
@@ -632,17 +635,41 @@ public sealed class MiscVerifier : Verifier
         VerifyAbsoluteSizes(data, pb7);
         if (pb7.Stat_CP != pb7.CalcCP && !IsStarterLGPE(pb7))
             data.AddLine(GetInvalid(LStatIncorrectCP, Encounter));
+
+        if (pb7.ReceivedTime is null)
+            data.AddLine(GetInvalid(LDateTimeClockInvalid, Misc));
+
+        // HOME moving in and out will retain received date. ensure it matches if no HT data present.
+        // Go Park captures will have different dates, as the GO met date is retained as Met Date.
+        if (pb7.ReceivedDate is not { } date || !EncounterDate.IsValidDateSwitch(date) || (pb7.IsUntraded && data.EncounterOriginal is not EncounterSlot7GO && date != pb7.MetDate))
+            data.AddLine(GetInvalid(LDateOutsideConsoleWindow, Misc));
     }
 
-    private static void VerifyAbsoluteSizes(LegalityAnalysis data, IScaledSizeValue obj)
+    private static void VerifyAbsoluteSizes<T>(LegalityAnalysis data, T obj) where T : IScaledSizeValue
     {
-        // ReSharper disable once CompareOfFloatsByEqualityOperator -- THESE MUST MATCH EXACTLY
+        if (obj is PB7 pb7 && data.EncounterMatch is WB7 { IsHeightWeightFixed: true } enc)
+            VerifyFixedSizes(data, pb7, enc);
+        else
+            VerifyCalculatedSizes(data, obj);
+    }
+
+    // ReSharper disable 4 CompareOfFloatsByEqualityOperator -- THESE MUST MATCH EXACTLY
+    private static void VerifyFixedSizes<T>(LegalityAnalysis data, T obj, WB7 enc) where T : IScaledSizeValue
+    {
+        if (obj.HeightAbsolute != enc.GetHomeHeightAbsolute())
+            data.AddLine(GetInvalid(LStatIncorrectHeight, Encounter));
+        if (obj.WeightAbsolute != enc.GetHomeWeightAbsolute())
+            data.AddLine(GetInvalid(LStatIncorrectWeight, Encounter));
+    }
+
+    private static void VerifyCalculatedSizes<T>(LegalityAnalysis data, T obj) where T : IScaledSizeValue
+    {
         if (obj.HeightAbsolute != obj.CalcHeightAbsolute)
             data.AddLine(GetInvalid(LStatIncorrectHeight, Encounter));
-        // ReSharper disable once CompareOfFloatsByEqualityOperator -- THESE MUST MATCH EXACTLY
         if (obj.WeightAbsolute != obj.CalcWeightAbsolute)
             data.AddLine(GetInvalid(LStatIncorrectWeight, Encounter));
     }
+    // ReSharper restore CompareOfFloatsByEqualityOperator
 
     private static bool IsStarterLGPE<T>(T pk) where T : ISpeciesForm => pk switch
     {

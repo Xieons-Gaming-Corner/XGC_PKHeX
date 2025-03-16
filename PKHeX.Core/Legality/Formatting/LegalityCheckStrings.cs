@@ -101,6 +101,8 @@ public static class LegalityCheckStrings
     public static string LContestSheenTooLow_0 { get; set; } = "Contest Stat Sheen should be >= {0}.";
     public static string LContestSheenTooHigh_0 { get; set; } = "Contest Stat Sheen should be <= {0}.";
 
+    public static string LDateOutsideConsoleWindow { get; set; } = "Local Date is outside of console's local time window.";
+    public static string LDateTimeClockInvalid { get; set; } = "Local Time is not a valid timestamp.";
     public static string LDateOutsideDistributionWindow { get; set; } = "Met Date is outside of distribution window.";
 
     public static string LEggContest { get; set; } = "Cannot increase Contest Stats of an Egg.";
@@ -488,8 +490,9 @@ public static class LegalityCheckStrings
     public static string LTransferEgg { get; set; } = "Can't transfer Eggs between Generations.";
     public static string LTransferEggLocationTransporter { get; set; } = "Invalid Met Location, expected Poké Transfer.";
     public static string LTransferEggMetLevel { get; set; } = "Invalid Met Level for transfer.";
+    public static string LTransferEggVersion { get; set; } = "Can't transfer Eggs to this game.";
     public static string LTransferFlagIllegal { get; set; } = "Flagged as illegal by the game (glitch abuse).";
-    public static string LTransferHTFlagRequired { get; set; } = "Current handler cannot be past gen OT for transferred specimen.";
+    public static string LTransferHTFlagRequired { get; set; } = "Current handler cannot be the OT.";
     public static string LTransferHTMismatchName { get; set; } = "Handling trainer does not match the expected trainer name.";
     public static string LTransferHTMismatchGender { get; set; } = "Handling trainer does not match the expected trainer gender.";
     public static string LTransferHTMismatchLanguage { get; set; } = "Handling trainer does not match the expected trainer language.";
