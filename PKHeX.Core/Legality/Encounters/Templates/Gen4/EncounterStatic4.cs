@@ -52,7 +52,7 @@ public sealed record EncounterStatic4(GameVersion Version)
 
     public PK4 ConvertToPKM(ITrainerInfo tr, EncounterCriteria criteria)
     {
-        int lang = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
+        int language = (int)Language.GetSafeLanguage(Generation, (LanguageID)tr.Language);
         var version = this.GetCompatibleVersion(tr.Version);
         var pi = PersonalTable.HGSS[Species];
         var pk = new PK4
@@ -70,11 +70,11 @@ public sealed record EncounterStatic4(GameVersion Version)
             Ball = (byte)(FixedBall != Ball.None ? FixedBall : Ball.Poke),
             FatefulEncounter = FatefulEncounter,
 
-            Language = lang,
+            Language = language,
             OriginalTrainerName = tr.OT,
             OriginalTrainerGender = tr.Gender,
             ID32 = tr.ID32,
-            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, lang, Generation),
+            Nickname = SpeciesName.GetSpeciesNameGeneration(Species, language, Generation),
         };
 
         if (IsEgg)
@@ -114,13 +114,13 @@ public sealed record EncounterStatic4(GameVersion Version)
         {
             if (criteria.IsSpecifiedIVsAll() && TrySetChainShiny(pk, criteria, gr))
                 return;
-            SetChainShiny(pk, criteria, gr);
+            SetChainShiny(pk, criteria, gr, Util.Rand32());
         }
         else
         {
             if (criteria.IsSpecifiedIVsAll() && TrySetMethod1(pk, criteria, gr))
                 return;
-            SetMethod1(pk, criteria, gr);
+            SetMethod1(pk, criteria, gr, Util.Rand32());
         }
     }
 
@@ -155,9 +155,8 @@ public sealed record EncounterStatic4(GameVersion Version)
         return false;
     }
 
-    private static void SetMethod1(PK4 pk, in EncounterCriteria criteria, byte gr)
+    private static void SetMethod1(PK4 pk, in EncounterCriteria criteria, byte gr, uint seed)
     {
-        var seed = Util.Rand32();
         var id32 = pk.ID32;
         while (true)
         {
@@ -224,9 +223,8 @@ public sealed record EncounterStatic4(GameVersion Version)
         return false;
     }
 
-    private static void SetChainShiny(PK4 pk, in EncounterCriteria criteria, byte gr)
+    private static void SetChainShiny(PK4 pk, in EncounterCriteria criteria, byte gr, uint seed)
     {
-        var seed = Util.Rand32();
         var id32 = pk.ID32;
         while (true)
         {

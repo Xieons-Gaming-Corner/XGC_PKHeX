@@ -93,13 +93,15 @@ public sealed record EncounterGift3Colo : IEncounterable, IEncounterMatch, IEnco
             criteria = criteria with { Shiny = Shiny.Never }; // ensure no bad inputs
         if (criteria.IsSpecifiedIVsAll() && MethodCXD.SetFromIVs(pk, criteria, pi, noShiny: true))
             return;
-        MethodCXD.SetRandom(pk, criteria, pi, noShiny: true);
+        MethodCXD.SetRandom(pk, criteria, pi, noShiny: true, Util.Rand32());
     }
     #endregion
 
     #region Matching
     public bool IsMatchExact(PKM pk, EvoCriteria evo)
     {
+        if (pk.Version != Version)
+            return false;
         if (!IsMatchEggLocation(pk))
             return false;
         if (!IsMatchLocation(pk))
