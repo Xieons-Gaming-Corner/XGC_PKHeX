@@ -283,8 +283,8 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
     public bool SM => Version is SN or MN;
     public bool USUM => Version is US or UM;
     public bool GO => Version is GameVersion.GO;
-    public bool VC1 => Version is >= RD and <= YW;
-    public bool VC2 => Version is >= GD and <= C;
+    public bool VC1 => Version is RD or GN or BU or YW;
+    public bool VC2 => Version is GD or SI or C;
     public bool LGPE => Version is GP or GE;
     public bool SWSH => Version is SW or SH;
     public virtual bool BDSP => Version is BD or SP;
@@ -703,7 +703,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
 
     public virtual void LoadStats(IBaseStat p, Span<ushort> stats)
     {
-        int level = CurrentLevel; // recalculate instead of checking Stat_Level
+        var level = CurrentLevel; // recalculate instead of checking Stat_Level
         if (this is IHyperTrain t)
             LoadStats(stats, p, t, level);
         else
@@ -713,7 +713,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         NatureAmp.ModifyStatsForNature(stats, StatNature);
     }
 
-    private void LoadStats(Span<ushort> stats, IBaseStat p, IHyperTrain t, int level)
+    private void LoadStats(Span<ushort> stats, IBaseStat p, IHyperTrain t, byte level)
     {
         stats[0] = (ushort)(p.HP == 1 ? 1 : (((t.HT_HP ? 31 : IV_HP) + (2 * p.HP) + (EV_HP / 4) + 100) * level / 100) + 10);
         stats[1] = (ushort)((((t.HT_ATK ? 31 : IV_ATK) + (2 * p.ATK) + (EV_ATK / 4)) * level / 100) + 5);
@@ -723,7 +723,7 @@ public abstract class PKM : ISpeciesForm, ITrainerID32, IGeneration, IShiny, ILa
         stats[3] = (ushort)((((t.HT_SPE ? 31 : IV_SPE) + (2 * p.SPE) + (EV_SPE / 4)) * level / 100) + 5);
     }
 
-    private void LoadStats(Span<ushort> stats, IBaseStat p, int level)
+    private void LoadStats(Span<ushort> stats, IBaseStat p, byte level)
     {
         stats[0] = (ushort)(p.HP == 1 ? 1 : ((IV_HP + (2 * p.HP) + (EV_HP / 4) + 100) * level / 100) + 10);
         stats[1] = (ushort)(((IV_ATK + (2 * p.ATK) + (EV_ATK / 4)) * level / 100) + 5);

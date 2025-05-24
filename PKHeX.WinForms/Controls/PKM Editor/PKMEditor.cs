@@ -914,7 +914,7 @@ public sealed partial class PKMEditor : UserControl, IMainEditor
             var expInput = Util.ToUInt32(TB_EXP.Text);
             var expCalc = expInput;
             var gr = Entity.PersonalInfo.EXPGrowth;
-            int lvlExp = Experience.GetLevel(expInput, gr);
+            var lvlExp = Experience.GetLevel(expInput, gr);
             if (lvlExp == 100)
                 expCalc = Experience.GetEXP(100, gr);
 
@@ -2179,6 +2179,8 @@ public sealed partial class PKMEditor : UserControl, IMainEditor
             var game = sav.Version;
             if (game <= 0)
                 game = Entity.Context.GetSingleGameVersion();
+            else if (game is GameVersion.COLO or GameVersion.XD)
+                game = GameVersion.CXD;
             CheckMetLocationChange(game, sav.Context);
             SetIfDifferentCount(source.Items, CB_HeldItem, force);
         }
