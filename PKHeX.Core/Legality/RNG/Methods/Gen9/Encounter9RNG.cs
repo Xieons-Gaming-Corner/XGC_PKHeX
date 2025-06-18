@@ -12,7 +12,7 @@ public static class Encounter9RNG
     /// Sets the <see cref="pk"/> with random data based on the <see cref="enc"/> and <see cref="criteria"/>.
     /// </summary>
     /// <returns>True if the generated data matches the <see cref="criteria"/>.</returns>
-    public static bool TryApply32<TEnc>(this TEnc enc, PK9 pk, in ulong init, in GenerateParam9 param, EncounterCriteria criteria)
+    public static bool TryApply32<TEnc>(this TEnc enc, PK9 pk, in ulong init, in GenerateParam9 param, in EncounterCriteria criteria)
         where  TEnc : IEncounterTemplate, ITeraRaid9
     {
         const int maxCtr = 100_000;
@@ -32,7 +32,8 @@ public static class Encounter9RNG
         return false;
     }
 
-    public static bool TryApply64<TEnc>(this TEnc enc, PK9 pk, in ulong init, in GenerateParam9 param, EncounterCriteria criteria)
+    /// <inheritdoc cref="TryApply32{TEnc}(TEnc, PK9, in ulong, in GenerateParam9, in EncounterCriteria)"/>
+    public static bool TryApply64<TEnc>(this TEnc enc, PK9 pk, in ulong init, in GenerateParam9 param, in EncounterCriteria criteria)
         where TEnc : ISpeciesForm, IGemType
     {
         var rand = new Xoroshiro128Plus(init);
@@ -54,7 +55,7 @@ public static class Encounter9RNG
     /// Fills out an entity with details from the provided encounter template.
     /// </summary>
     /// <returns>False if the seed cannot generate data matching the criteria.</returns>
-    public static bool GenerateData(PK9 pk, in GenerateParam9 enc, EncounterCriteria criteria, in ulong seed, bool ignoreIVs = false)
+    public static bool GenerateData(PK9 pk, in GenerateParam9 enc, in EncounterCriteria criteria, in ulong seed, bool ignoreIVs = false)
     {
         var rand = new Xoroshiro128Plus(seed);
         pk.EncryptionConstant = (uint)rand.NextInt(uint.MaxValue);
@@ -90,12 +91,12 @@ public static class Encounter9RNG
         if (!ignoreIVs && !criteria.IsIVsCompatibleSpeedLast(ivs))
             return false;
 
-        pk.IV_HP = ivs[0];
-        pk.IV_ATK = ivs[1];
-        pk.IV_DEF = ivs[2];
-        pk.IV_SPA = ivs[3];
-        pk.IV_SPD = ivs[4];
-        pk.IV_SPE = ivs[5];
+        pk.IV32 = (uint)ivs[0] |
+                  (uint)(ivs[1] << 05) |
+                  (uint)(ivs[2] << 10) |
+                  (uint)(ivs[5] << 15) | // speed is last in the array, but in the middle of the 32bit value
+                  (uint)(ivs[3] << 20) |
+                  (uint)(ivs[4] << 25);
 
         int ability = enc.Ability switch
         {
@@ -299,11 +300,11 @@ public static class Encounter9RNG
 
     public static byte GetGender(in byte ratio, in ulong rand100) => ratio switch
     {
-        0x1F => rand100 < 12 ? (byte)1 : (byte)0, // 12.5%
-        0x3F => rand100 < 25 ? (byte)1 : (byte)0, // 25%
-        0x7F => rand100 < 50 ? (byte)1 : (byte)0, // 50%
-        0xBF => rand100 < 75 ? (byte)1 : (byte)0, // 75%
-        0xE1 => rand100 < 89 ? (byte)1 : (byte)0, // 87.5%
+        EntityGender.VM => rand100 < 12 ? (byte)1 : (byte)0, // 12.5%
+        EntityGender.MM => rand100 < 25 ? (byte)1 : (byte)0, // 25%
+        EntityGender.HH => rand100 < 50 ? (byte)1 : (byte)0, // 50%
+        EntityGender.MF => rand100 < 75 ? (byte)1 : (byte)0, // 75%
+        EntityGender.VF => rand100 < 89 ? (byte)1 : (byte)0, // 87.5%
 
         _ => throw new ArgumentOutOfRangeException(nameof(ratio)),
     };

@@ -21,25 +21,33 @@ public sealed class MiscVerifier : Verifier
         {
             VerifyMiscEggCommon(data);
 
+            // No egg have contest stats from the encounter.
             if (pk is IContestStatsReadOnly s && s.HasContestStats())
                 data.AddLine(GetInvalid(LEggContest, Egg));
 
+            // Cannot transfer eggs across contexts (must be hatched).
+            var e = data.EncounterOriginal;
+            if (e.Context != pk.Context)
+                data.AddLine(GetInvalid(LTransferEggVersion, Egg));
+
             switch (pk)
             {
-                case SK2 or CK3 or XK3 or BK4 or RK4 or PA8: // Side Game: No Eggs
+                // Side Game: No Eggs
+                case SK2 or CK3 or XK3 or BK4 or RK4 when e.Context == pk.Context:
                     data.AddLine(GetInvalid(LTransferEggVersion, Egg));
                     break;
-                case PK5 pk5 when pk5.PokeStarFame != 0:
-                    data.AddLine(GetInvalid(LEggShinyPokeStar, Egg));
+
+                // All Eggs are Japanese and flagged specially for localized string
+                case PK3 when pk.Language != 1:
+                    data.AddLine(GetInvalid(string.Format(LOTLanguage, LanguageID.Japanese, (LanguageID)pk.Language), Egg));
                     break;
+
+                // Cannot obtain Shiny Leaf or Pokeathlon Stats as Egg
                 case PK4 pk4:
                     if (pk4.ShinyLeaf != 0)
                         data.AddLine(GetInvalid(LEggShinyLeaf, Egg));
                     if (pk4.PokeathlonStat != 0)
                         data.AddLine(GetInvalid(LEggPokeathlon, Egg));
-                    break;
-                case PK3 when pk.Language != 1:  // All Eggs are Japanese and flagged specially for localized string
-                    data.AddLine(GetInvalid(string.Format(LOTLanguage, LanguageID.Japanese, (LanguageID)pk.Language), Egg));
                     break;
             }
 
@@ -49,87 +57,31 @@ public sealed class MiscVerifier : Verifier
 
         switch (pk)
         {
-            case SK2 sk2:
-                VerifyIsMovesetAllowed(data, sk2);
-                break;
-            case PK5 pk5:
-                VerifyGen5Stats(data, pk5);
-                break;
-            case PK7 {ResortEventStatus: >= ResortEventState.MAX}:
-                data.AddLine(GetInvalid(LTransferBad));
-                break;
-            case PB7 pb7:
-                VerifyBelugaStats(data, pb7);
-                break;
-            case PK8 pk8:
-                VerifySWSHStats(data, pk8);
-                break;
-            case PB8 pb8:
-                VerifyBDSPStats(data, pb8);
-                break;
-            case PA8 pa8:
-                VerifyPLAStats(data, pa8);
-                break;
-            case PK9 pk9:
-                VerifySVStats(data, pk9);
-                break;
+            case SK2 sk2: VerifyIsMovesetAllowed(data, sk2); break;
+            case PK5 pk5: VerifyStats5(data, pk5); break;
+            case PK7 pk7: VerifyStats7(data, pk7); break;
+            case PB7 pb7: VerifyStats7b(data, pb7); break;
+            case PK8 pk8: VerifyStats8(data, pk8); break;
+            case PB8 pb8: VerifyStats8b(data, pb8); break;
+            case PA8 pa8: VerifyStats8a(data, pa8); break;
+            case PK9 pk9: VerifyStats9(data, pk9); break;
         }
 
-        if (pk.Format >= 6)
-            VerifyFullness(data, pk);
+        if (pk is IFullnessEnjoyment fe) // 6-8
+            VerifyFullness(data, pk, fe);
 
         var enc = data.EncounterMatch;
         if (enc is IEncounterServerDate { IsDateRestricted: true } encounterDate)
         {
-            var actualDay = new DateOnly(pk.MetYear + 2000, pk.MetMonth, pk.MetDay);
-
-            // HOME Gifts for Sinnoh/Hisui starters were forced JPN until May 20, 2022 (UTC).
-            if (enc is WB8 { IsDateLockJapanese: true } or WA8 { IsDateLockJapanese: true })
-            {
-                if (actualDay < new DateOnly(2022, 5, 20) && pk.Language != (int)LanguageID.Japanese)
-                    data.AddLine(GetInvalid(LDateOutsideDistributionWindow));
-            }
-
-            var result = encounterDate.IsWithinDistributionWindow(actualDay);
-            if (result == EncounterServerDateCheck.Invalid)
-                data.AddLine(GetInvalid(LDateOutsideDistributionWindow));
+            VerifyServerDate2000(data, pk, enc, encounterDate);
         }
         else if (enc is IOverworldCorrelation8 z)
         {
-            var match = z.IsOverworldCorrelationCorrect(pk);
-            var req = z.GetRequirement(pk);
-            if (match)
-            {
-                var seed = Overworld8RNG.GetOriginalSeed(pk);
-                data.Info.PIDIV = new PIDIV(PIDType.Overworld8, seed);
-            }
-
-            bool valid = req switch
-            {
-                OverworldCorrelation8Requirement.MustHave => match,
-                OverworldCorrelation8Requirement.MustNotHave => !match,
-                _ => true,
-            };
-
-            if (!valid)
-                data.AddLine(GetInvalid(LPIDTypeMismatch));
+            VerifyCorrelation8(data, z, pk);
         }
         else if (enc is IStaticCorrelation8b s8b)
         {
-            var match = s8b.IsStaticCorrelationCorrect(pk);
-            var req = s8b.GetRequirement(pk);
-            if (match)
-                data.Info.PIDIV = new PIDIV(PIDType.Roaming8b, pk.EncryptionConstant);
-
-            bool valid = req switch
-            {
-                StaticCorrelation8bRequirement.MustHave => match,
-                StaticCorrelation8bRequirement.MustNotHave => !match,
-                _ => true,
-            };
-
-            if (!valid)
-                data.AddLine(GetInvalid(LPIDTypeMismatch));
+            VerifyCorrelation8b(data, s8b, pk);
         }
         else if (enc is ISeedCorrelation64<PKM> s64)
         {
@@ -142,6 +94,68 @@ public sealed class MiscVerifier : Verifier
         VerifyMiscFatefulEncounter(data);
         VerifyMiscPokerus(data);
         VerifyMiscScaleValues(data, pk, enc);
+    }
+
+    private void VerifyCorrelation8b(LegalityAnalysis data, IStaticCorrelation8b s8b, PKM pk)
+    {
+        var match = s8b.IsStaticCorrelationCorrect(pk);
+        var req = s8b.GetRequirement(pk);
+        if (match)
+            data.Info.PIDIV = new PIDIV(PIDType.Roaming8b, pk.EncryptionConstant);
+
+        bool valid = req switch
+        {
+            StaticCorrelation8bRequirement.MustHave => match,
+            StaticCorrelation8bRequirement.MustNotHave => !match,
+            _ => true,
+        };
+
+        if (!valid)
+            data.AddLine(GetInvalid(LPIDTypeMismatch));
+    }
+
+    private void VerifyCorrelation8(LegalityAnalysis data, IOverworldCorrelation8 z, PKM pk)
+    {
+        var match = z.IsOverworldCorrelationCorrect(pk);
+        var req = z.GetRequirement(pk);
+        if (match)
+        {
+            var seed = Overworld8RNG.GetOriginalSeed(pk);
+            data.Info.PIDIV = new PIDIV(PIDType.Overworld8, seed);
+        }
+
+        bool valid = req switch
+        {
+            OverworldCorrelation8Requirement.MustHave => match,
+            OverworldCorrelation8Requirement.MustNotHave => !match,
+            _ => true,
+        };
+
+        if (!valid)
+            data.AddLine(GetInvalid(LPIDTypeMismatch));
+    }
+
+    private void VerifyServerDate2000(LegalityAnalysis data, PKM pk, IEncounterable enc, IEncounterServerDate date)
+    {
+        const int epoch = 2000;
+        var actualDay = new DateOnly(pk.MetYear + epoch, pk.MetMonth, pk.MetDay);
+
+        // HOME Gifts for Sinnoh/Hisui starters were forced JPN until May 20, 2022 (UTC).
+        if (enc is WB8 { IsDateLockJapanese: true } or WA8 { IsDateLockJapanese: true })
+        {
+            if (actualDay < new DateOnly(2022, 5, 20) && pk.Language != (int)LanguageID.Japanese)
+                data.AddLine(GetInvalid(LDateOutsideDistributionWindow));
+        }
+
+        var result = date.IsWithinDistributionWindow(actualDay);
+        if (result == EncounterServerDateCheck.Invalid)
+            data.AddLine(GetInvalid(LDateOutsideDistributionWindow));
+    }
+
+    private void VerifyStats7(LegalityAnalysis data, PK7 pk7)
+    {
+        if (pk7.ResortEventStatus >= ResortEventState.MAX)
+            data.AddLine(GetInvalid(LTransferBad));
     }
 
     private void VerifyMiscScaleValues(LegalityAnalysis data, PKM pk, IEncounterTemplate enc)
@@ -200,9 +214,15 @@ public sealed class MiscVerifier : Verifier
         }
     }
 
-    private static void VerifyGen5Stats(LegalityAnalysis data, PK5 pk5)
+    private static void VerifyStats5(LegalityAnalysis data, PK5 pk5)
     {
         var enc = data.EncounterMatch;
+
+        // Cannot participate in Pokestar Studios as Egg
+        if (pk5.IsEgg && pk5.PokeStarFame != 0)
+            data.AddLine(GetInvalid(LEggShinyPokeStar, Egg));
+
+        // Ensure NSparkle is only present on N's encounters.
         if (enc is EncounterStatic5N)
         {
             if (!pk5.NSparkle)
@@ -222,7 +242,7 @@ public sealed class MiscVerifier : Verifier
         return true;
     }
 
-    private void VerifySVStats(LegalityAnalysis data, PK9 pk9)
+    private void VerifyStats9(LegalityAnalysis data, PK9 pk9)
     {
         VerifyStatNature(data, pk9);
         VerifyTechRecordSV(data, pk9);
@@ -345,7 +365,7 @@ public sealed class MiscVerifier : Verifier
     private void VerifyMiscPokerus(LegalityAnalysis data)
     {
         var pk = data.Entity;
-        if (pk.Format == 1)
+        if (pk.Format == 1) // not stored in Gen1 format
             return;
 
         var strain = pk.PokerusStrain;
@@ -616,10 +636,8 @@ public sealed class MiscVerifier : Verifier
         }
     }
 
-    private static void VerifyFullness(LegalityAnalysis data, PKM pk)
+    private static void VerifyFullness(LegalityAnalysis data, PKM pk, IFullnessEnjoyment fe)
     {
-        if (pk is not IFullnessEnjoyment fe)
-            return;
         if (pk.IsEgg)
         {
             if (fe.Fullness != 0)
@@ -663,7 +681,7 @@ public sealed class MiscVerifier : Verifier
         (int)Species.Shedinja or
         (int)Species.Spewpa;
 
-    private static void VerifyBelugaStats(LegalityAnalysis data, PB7 pb7)
+    private static void VerifyStats7b(LegalityAnalysis data, PB7 pb7)
     {
         VerifyAbsoluteSizes(data, pb7);
         if (pb7.Stat_CP != pb7.CalcCP && !IsStarterLGPE(pb7))
@@ -734,7 +752,7 @@ public sealed class MiscVerifier : Verifier
         _ => false,
     };
 
-    private void VerifySWSHStats(LegalityAnalysis data, PK8 pk8)
+    private void VerifyStats8(LegalityAnalysis data, PK8 pk8)
     {
         var social = pk8.Sociability;
         if (pk8.IsEgg)
@@ -770,7 +788,7 @@ public sealed class MiscVerifier : Verifier
         VerifyTechRecordSWSH(data, pk8);
     }
 
-    private void VerifyPLAStats(LegalityAnalysis data, PA8 pa8)
+    private void VerifyStats8a(LegalityAnalysis data, PA8 pa8)
     {
         Arceus.Verify(data);
         VerifyAbsoluteSizes(data, pa8);
@@ -796,7 +814,7 @@ public sealed class MiscVerifier : Verifier
         VerifyTechRecordSWSH(data, pa8);
     }
 
-    private void VerifyBDSPStats(LegalityAnalysis data, PB8 pb8)
+    private void VerifyStats8b(LegalityAnalysis data, PB8 pb8)
     {
         var social = pb8.Sociability;
         if (social != 0)
@@ -835,13 +853,14 @@ public sealed class MiscVerifier : Verifier
         return true;
     }
 
-    private void VerifyStatNature(LegalityAnalysis data, PKM pk)
+    private void VerifyStatNature<T>(LegalityAnalysis data, T pk) where T : PKM
     {
-        var sn = (byte)pk.StatNature;
-        if (sn == (byte)pk.Nature)
+        // No encounters innately come with a different Stat Nature...
+        // If it matches the Nature, it is valid. If it doesn't, it should be one of the mint natures.
+        var statNature = pk.StatNature;
+        if (statNature == pk.Nature)
             return;
-        // Only allow Serious nature (12); disallow all other neutral natures.
-        if (sn != 12 && (sn > 24 || sn % 6 == 0))
+        if (!statNature.IsMint())
             data.AddLine(GetInvalid(LStatNatureInvalid));
     }
 

@@ -8,9 +8,10 @@ namespace PKHeX.Core;
 /// <summary>
 /// Generation 4 Mystery Gift Template File (Inner Gift Data, no card data)
 /// </summary>
-public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, IRibbonSetEvent4, IRandomCorrelation
+public sealed class PGT : DataMysteryGift, IRibbonSetEvent3, IRibbonSetEvent4, IRandomCorrelation
 {
     public PGT() : this(new byte[Size]) { }
+    public PGT(Memory<byte> raw) : base(raw) { }
 
     public const int Size = 0x104; // 260
     public override byte Generation => 4;
@@ -37,16 +38,16 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
     public override bool GiftUsed { get => false; set { } }
     public override Shiny Shiny => IsEgg ? Shiny.Random : PK.PID == 1 ? Shiny.Never : IsShiny ? Shiny.Always : Shiny.Never;
 
-    public ushort CardType { get => ReadUInt16LittleEndian(Data.AsSpan(0x0)); set => WriteUInt16LittleEndian(Data.AsSpan(0x0), value); }
+    public ushort CardType { get => ReadUInt16LittleEndian(Data); set => WriteUInt16LittleEndian(Data, value); }
     public byte Slot { get => Data[2]; set => Data[2] = value; }
     public byte Detail { get => Data[3]; set => Data[3] = value; }
-    public override int ItemID { get => ReadInt32LittleEndian(Data.AsSpan(0x4)); set => WriteInt32LittleEndian(Data.AsSpan(0x4), value); }
-    public int ItemSubID { get => ReadInt32LittleEndian(Data.AsSpan(0x8)); set => WriteInt32LittleEndian(Data.AsSpan(0x8), value); }
+    public override int ItemID { get => ReadInt32LittleEndian(Data[0x4..]); set => WriteInt32LittleEndian(Data[0x4..], value); }
+    public int ItemSubID { get => ReadInt32LittleEndian(Data[0x8..]); set => WriteInt32LittleEndian(Data[0x8..], value); }
     public int PokewalkerCourseID { get => Data[0x4]; set => Data[0x4] = (byte)value; }
 
     public PK4 PK
     {
-        get => _pk ??= new PK4(Data.AsSpan(8, PokeCrypto.SIZE_4PARTY).ToArray());
+        get => _pk ??= new PK4(Data.Slice(8, PokeCrypto.SIZE_4PARTY).ToArray());
         set
         {
             _pk = value;
@@ -54,14 +55,14 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
             bool zero = Array.TrueForAll(data, static z => z == 0); // all zero
             if (!zero)
                 data = PokeCrypto.EncryptArray45(data);
-            data.CopyTo(Data, 8);
+            data.CopyTo(Data[8..]);
         }
     }
 
-    public override byte[] Write()
+    public override ReadOnlySpan<byte> Write()
     {
         // Ensure PGT content is encrypted
-        var clone = new PGT((byte[])Data.Clone());
+        var clone = new PGT(Data.ToArray());
         clone.VerifyPKEncryption();
         return clone.Data;
     }
@@ -76,7 +77,7 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
     {
         if (GiftType is not (Pokémon or PokémonEgg))
             return false; // not encrypted
-        if (ReadUInt32LittleEndian(Data.AsSpan(0x64 + 8)) != 0)
+        if (ReadUInt32LittleEndian(Data[(0x64 + 8)..]) != 0)
             return false; // already encrypted (unused PK4 field, zero)
         EncryptPK();
         return true;
@@ -84,7 +85,7 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
 
     private void EncryptPK()
     {
-        var span = Data.AsSpan(8, PokeCrypto.SIZE_4PARTY);
+        var span = Data.Slice(8, PokeCrypto.SIZE_4PARTY);
         var ekdata = PokeCrypto.EncryptArray45(span);
         ekdata.CopyTo(span);
     }
@@ -162,13 +163,13 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
         return pk4;
     }
 
-    private static void SetPINGAManaphy(PK4 pk4, EncounterCriteria criteria, ITrainerInfo tr)
+    private static void SetPINGAManaphy(PK4 pk4, in EncounterCriteria criteria, ITrainerInfo tr)
     {
         if (criteria.IsSpecifiedIVsAll() && TrySetManaphyFromIVs(pk4, criteria, tr))
             return;
 
         var seed = Util.Rand32();
-        bool filterIVs = criteria.IsSpecifiedIVsAny(out var count) && count <= 2;
+        bool filterIVs = criteria.IsSpecifiedIVs(2);
         while (true)
         {
             // Generate PID
@@ -199,7 +200,7 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
         }
     }
 
-    private static bool TrySetManaphyFromIVs(PK4 pk4, EncounterCriteria criteria, ITrainerInfo tr)
+    private static bool TrySetManaphyFromIVs(PK4 pk4, in EncounterCriteria criteria, ITrainerInfo tr)
     {
         Span<uint> seeds = stackalloc uint[LCRNG.MaxCountSeedsIV];
         criteria.GetCombinedIVs(out var iv1, out var iv2);
@@ -264,7 +265,7 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
         pk4.EggLocation = Locations.LinkTrade4;
     }
 
-    private void SetMetData(PK4 pk4, ITrainerInfo trainer, EncounterCriteria criteria)
+    private void SetMetData(PK4 pk4, ITrainerInfo trainer, in EncounterCriteria criteria)
     {
         if (!IsEgg)
         {
@@ -321,7 +322,7 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
     public bool HasPID => PK.PID > 1; // 0=Random, 1=Random (Anti-Shiny). 0 was never used in any Gen4 gift (all non-shiny).
     public bool HasIVs => (PK.IV32 & 0x3FFF_FFFFu) != 0; // ignore Nickname/Egg flag bits
 
-    private static void SetPINGA(PK4 pk4, PersonalInfo4 pi, EncounterCriteria criteria)
+    private static void SetPINGA(PK4 pk4, PersonalInfo4 pi, in EncounterCriteria criteria)
     {
         // Ability is forced already, can't force anything
 
@@ -338,24 +339,22 @@ public sealed class PGT(byte[] Data) : DataMysteryGift(Data), IRibbonSetEvent3, 
             pk4.IV32 |= criteria.GetCombinedIVs();
             return;
         }
-        if (criteria.IsSpecifiedIVsAny(out _))
-        {
-            criteria.SetRandomIVs(pk4);
-            return;
-        }
         var seed = Util.Rand32(); // reseed, do not have method 1 correlation
+        bool filterIVs = criteria.IsSpecifiedIVs(2);
         uint iv32;
         while (true)
         {
             iv32 = ClassicEraRNG.GetSequentialIVs(ref seed);
             if (criteria.IsSpecifiedHiddenPower() && !criteria.IsSatisfiedHiddenPower(iv32))
                 continue;
+            if (filterIVs && !criteria.IsSatisfiedIVs(iv32))
+                continue;
             break;
         }
         pk4.IV32 |= iv32;
     }
 
-    private static uint GetPID(PK4 pk4, PersonalInfo4 pi, EncounterCriteria criteria)
+    private static uint GetPID(PK4 pk4, PersonalInfo4 pi, in EncounterCriteria criteria)
     {
         var template = pk4.PID;
         if (template > 1) // 0=Random, 1=Random (Anti-Shiny). 0 was never used in any Gen4 gift (all non-shiny).
