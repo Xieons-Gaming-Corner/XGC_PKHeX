@@ -13,15 +13,13 @@ public sealed class StartupArguments
 {
     public PKM? Entity { get; private set; }
     public SaveFile? SAV { get; private set; }
-
-    // ReSharper disable once UnassignedGetOnlyAutoProperty
-    public Exception? Error { get; }
+    public Exception? Error { get; internal set; }
     public readonly List<object> Extra = [];
 
     /// <summary>
     /// Step 1: Reads in command line arguments.
     /// </summary>
-    public void ReadArguments(IEnumerable<string> args)
+    public void ReadArguments(ReadOnlySpan<string> args)
     {
         foreach (var path in args)
         {
@@ -48,7 +46,7 @@ public sealed class StartupArguments
         else if (Extra.OfType<SAV3GCMemoryCard>().FirstOrDefault() is { } mc && SaveUtil.TryGetSaveFile(mc, out var mcSav))
             SAV = mcSav;
         else
-            SAV = ReadSettingsAnyPKM(startup) ?? GetBlankSaveFile(startup.DefaultSaveVersion, SAV);
+            SAV = ReadSettingsAnyPKM(startup) ?? BlankSaveFile.Get(startup.DefaultSaveVersion, SAV);
     }
 
     // step 3
@@ -69,15 +67,15 @@ public sealed class StartupArguments
 
     private static SaveFile? ReadSettingsDefinedPKM(IStartupSettings startup, PKM pk) => startup.AutoLoadSaveOnStartup switch
     {
-        AutoLoadSetting.RecentBackup => SaveFinder.DetectSaveFiles(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token).FirstOrDefault(z => z.IsCompatiblePKM(pk)),
-        AutoLoadSetting.LastLoaded => GetMostRecentlyLoaded(startup.RecentlyLoaded).FirstOrDefault(z => z.IsCompatiblePKM(pk)),
+        SaveFileLoadSetting.RecentBackup => SaveFinder.DetectSaveFiles(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token).FirstOrDefault(z => z.IsCompatiblePKM(pk)),
+        SaveFileLoadSetting.LastLoaded => GetMostRecentlyLoaded(startup.RecentlyLoaded).FirstOrDefault(z => z.IsCompatiblePKM(pk)),
         _ => null,
     };
 
     private static SaveFile? ReadSettingsAnyPKM(IStartupSettings startup) => startup.AutoLoadSaveOnStartup switch
     {
-        AutoLoadSetting.RecentBackup => SaveFinder.DetectSaveFiles(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token).FirstOrDefault(),
-        AutoLoadSetting.LastLoaded => GetMostRecentlyLoaded(startup.RecentlyLoaded).FirstOrDefault(),
+        SaveFileLoadSetting.RecentBackup => SaveFinder.DetectSaveFiles(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token).FirstOrDefault(),
+        SaveFileLoadSetting.LastLoaded => GetMostRecentlyLoaded(startup.RecentlyLoaded).FirstOrDefault(),
         _ => null,
     };
 
@@ -90,20 +88,6 @@ public sealed class StartupArguments
             version = GameVersion.BU;
 
         return BlankSaveFile.Get(version, pk.OriginalTrainerName, (LanguageID)pk.Language);
-    }
-
-    private static SaveFile GetBlankSaveFile(GameVersion version, SaveFile? current)
-    {
-        var lang = BlankSaveFile.GetSafeLanguage(current);
-        var tr = BlankSaveFile.GetSafeTrainerName(current, lang);
-        var sav = BlankSaveFile.Get(version, tr, lang);
-        if (sav.Version == GameVersion.Invalid) // will fail to load
-        {
-            var max = GameInfo.Sources.VersionDataSource.MaxBy(z => z.Value)!;
-            var maxVer = (GameVersion)max.Value;
-            sav = BlankSaveFile.Get(maxVer, tr, lang);
-        }
-        return sav;
     }
 
     private static IEnumerable<SaveFile> GetMostRecentlyLoaded(IEnumerable<string> paths)

@@ -104,7 +104,7 @@ public sealed class MiscVerifier : Verifier
         {
             if (pk.IsEgg)
                 data.AddLine(GetInvalid(Egg, G4PartnerMoodEgg));
-            else if (data.SlotOrigin is not StorageSlotType.Party && ParseSettings.ActiveTrainer is SAV4HGSS)
+            else if (!data.IsStoredSlot(StorageSlotType.Party) && ParseSettings.ActiveTrainer is SAV4HGSS)
                 data.AddLine(GetInvalid(Egg, G4PartnerMoodZero));
         }
 
@@ -266,8 +266,13 @@ public sealed class MiscVerifier : Verifier
         var enc = data.EncounterMatch;
 
         // Cannot participate in Pokestar Studios as Egg
-        if (pk5.IsEgg && pk5.PokeStarFame != 0)
-            data.AddLine(GetInvalid(Egg, EggShinyPokeStar));
+        if (pk5.PokeStarFame != 0)
+        {
+            if (pk5.IsEgg)
+                data.AddLine(GetInvalid(Egg, EggShinyPokeStar));
+            else if (enc.Species == (ushort)Species.Ditto) // Having Transform is not allowed; Smeargle can change moves.
+                data.AddLine(GetInvalid(Misc, G5PokeStarMustBeZero));
+        }
 
         // Ensure NSparkle is only present on N's encounters.
         if (enc is EncounterStatic5N)
@@ -724,7 +729,7 @@ public sealed class MiscVerifier : Verifier
     {
         VerifyAbsoluteSizes(data, pb7);
         var calc = pb7.CalcCP;
-        if (pb7.Stat_CP != pb7.CalcCP && !IsStarterLGPE(pb7))
+        if (pb7.Stat_CP != pb7.CalcCP && !pb7.IsStarter)
             data.AddLine(GetInvalid(Encounter, StatIncorrectCP_0, (uint)calc));
 
         if (pb7.ReceivedTime is null)
@@ -734,6 +739,14 @@ public sealed class MiscVerifier : Verifier
         // Go Park captures will have different dates, as the GO met date is retained as Met Date.
         if (pb7.ReceivedDate is not { } date || !EncounterDate.IsValidDateSwitch(date) || (pb7.IsUntraded && data.EncounterOriginal is not EncounterSlot7GO && date != pb7.MetDate))
             data.AddLine(GetInvalid(Misc, DateLocalInvalidDate));
+
+        if (!data.IsStoredSlot(StorageSlotType.Party) && !pb7.IsStarter)
+        {
+            if (pb7.Spirit is not PB7.InitialSpiritMood)
+                data.AddLine(GetInvalid(Misc, G7BSocialShouldBe100Spirit));
+            if (pb7.Mood is not PB7.InitialSpiritMood)
+                data.AddLine(GetInvalid(Misc, G7BSocialShouldBe100Mood));
+        }
     }
 
     private static void VerifyAbsoluteSizes<T>(LegalityAnalysis data, T obj) where T : IScaledSizeValue
@@ -790,13 +803,6 @@ public sealed class MiscVerifier : Verifier
             data.AddLine(GetInvalid(Encounter, StatIncorrectWeight, BitConverter.SingleToUInt32Bits(expectWeight)));
     }
     // ReSharper restore CompareOfFloatsByEqualityOperator
-
-    private static bool IsStarterLGPE<T>(T pk) where T : ISpeciesForm => pk switch
-    {
-        { Species: (int)Species.Pikachu, Form: 8 } => true,
-        { Species: (int)Species.Eevee, Form: 1 } => true,
-        _ => false,
-    };
 
     private void VerifyStats8(LegalityAnalysis data, PK8 pk8)
     {
