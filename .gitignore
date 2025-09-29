@@ -232,3 +232,5 @@ pingme.txt
 #################
 
 *.userprefs
+.vscode/launch.json
+.vscode/tasks.json
